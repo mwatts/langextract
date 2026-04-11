@@ -48,8 +48,8 @@ pub mod cli_adapter;
 // `use langextract_core::{Extraction, LanguageModel, …}` without threading
 // module paths everywhere. Explicit, not glob (`M-NO-GLOB-REEXPORTS`).
 pub use crate::data::{
-    AlignmentStatus, AnnotatedDocument, AttributeMap, AttributeValue, CharInterval, Document,
-    DocumentId, ExampleData, Extraction, TokenInterval,
+    ATTRIBUTE_SUFFIX, AlignmentStatus, AnnotatedDocument, AttributeMap, AttributeValue,
+    CharInterval, Document, DocumentId, EXTRACTIONS_KEY, ExampleData, Extraction, TokenInterval,
 };
 pub use crate::error::{BoxError, CliRunnerError, InferError, LangExtractError, Result};
 pub use crate::format::FormatType;

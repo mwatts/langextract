@@ -20,6 +20,18 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Default key used to wrap the extractions list inside a container
+/// object, e.g. `{"extractions": [...]}`. Ported from `EXTRACTIONS_KEY`
+/// in `langextract/core/data.py`.
+pub const EXTRACTIONS_KEY: &str = "extractions";
+
+/// Default suffix for attribute sub-objects on a formatted extraction.
+///
+/// For extraction class `"person"`, the attribute key becomes
+/// `"person_attributes"`. Ported from `ATTRIBUTE_SUFFIX` in
+/// `langextract/core/data.py`.
+pub const ATTRIBUTE_SUFFIX: &str = "_attributes";
+
 /// A half-open character interval `[start, end)` into some source text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CharInterval {

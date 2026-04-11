@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 /// resolver strips before parsing.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-#[non_exhaustive]
 pub enum FormatType {
     /// JSON output. Default for most providers.
     #[default]
