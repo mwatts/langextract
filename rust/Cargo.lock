@@ -171,6 +171,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "langextract-chunking"
+version = "0.1.0"
+dependencies = [
+ "langextract-core",
+ "langextract-tokenizer",
+ "pretty_assertions",
+ "thiserror",
+]
+
+[[package]]
 name = "langextract-core"
 version = "0.1.0"
 dependencies = [

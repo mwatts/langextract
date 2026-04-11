@@ -21,14 +21,17 @@ Always load the `rust` skill at the start of each session when working in this p
   half of `langextract/resolver.py`. Uses the `similar` crate for diff.
 - `crates/langextract-format/` — JSON/YAML output formatting and
   LLM-output parsing, including fence detection, `<think>` tag
-  stripping, wrapper-key handling, and top-level list fallback. Port
-  of `langextract/core/format_handler.py`.
+  stripping, wrapper-key handling, top-level list fallback, and
+  `extract_ordered_extractions` for turning parsed records into
+  `Vec<Extraction>`. Port of `langextract/core/format_handler.py`
+  plus the record-walker half of `resolver.py`.
+- `crates/langextract-chunking/` — sentence-aware document chunking
+  that fits a language model's context window. Three-branch
+  algorithm: multi-sentence packing, single long sentence breaking
+  at newlines, and oversized-token solo chunks. Port of
+  `langextract/chunking.py`.
 
 Future crates (not yet ported):
-
-- `crates/langextract-resolver/` — the parse-and-order half of
-  `langextract/resolver.py` (wires `langextract-format` output into
-  `Vec<Extraction>` with index-based ordering)
 - `crates/langextract-chunking/` — document chunking (`chunking.py`)
 - `crates/langextract-pipeline/` — the `extract()` entry point and `annotation.py`
 - `crates/langextract-provider-*/` — one crate per LLM backend
