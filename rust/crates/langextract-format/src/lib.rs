@@ -36,6 +36,8 @@
 pub mod error;
 pub mod fence;
 pub mod handler;
+pub mod records;
 
 pub use crate::error::FormatError;
 pub use crate::handler::{FormatHandler, FormatHandlerBuilder, ParsedOutput, ParsedRecord};
+pub use crate::records::extract_ordered_extractions;

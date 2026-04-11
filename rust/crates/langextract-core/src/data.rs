@@ -182,8 +182,14 @@ pub struct Extraction {
     pub alignment_status: Option<AlignmentStatus>,
 
     /// Index of this extraction in the output list.
+    ///
+    /// Signed because Python's `extraction_index` has no lower bound
+    /// and tests exercise negative indices for "lower priority" or
+    /// "placeholder" records. Resolvers that assign their own
+    /// positive, monotonically increasing indices can ignore the
+    /// sign.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub extraction_index: Option<usize>,
+    pub extraction_index: Option<i64>,
 
     /// Index of the group this extraction belongs to (used for co-referring
     /// extractions from the same output record).
