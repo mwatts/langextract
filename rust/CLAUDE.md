@@ -16,10 +16,19 @@ Always load the `rust` skill at the start of each session when working in this p
   (`RegexTokenizer`), token/sentence-range helpers, and the base data types
   the resolver's fuzzy alignment will build on. Port of
   `langextract/core/tokenizer.py`. Unicode grapheme tokenizer deferred.
+- `crates/langextract-aligner/` — two-phase exact + fuzzy token
+  alignment of extractions to source text. Port of the `WordAligner`
+  half of `langextract/resolver.py`. Uses the `similar` crate for diff.
+- `crates/langextract-format/` — JSON/YAML output formatting and
+  LLM-output parsing, including fence detection, `<think>` tag
+  stripping, wrapper-key handling, and top-level list fallback. Port
+  of `langextract/core/format_handler.py`.
 
 Future crates (not yet ported):
 
-- `crates/langextract-resolver/` — fenced-output parsing + fuzzy alignment (`resolver.py`)
+- `crates/langextract-resolver/` — the parse-and-order half of
+  `langextract/resolver.py` (wires `langextract-format` output into
+  `Vec<Extraction>` with index-based ordering)
 - `crates/langextract-chunking/` — document chunking (`chunking.py`)
 - `crates/langextract-pipeline/` — the `extract()` entry point and `annotation.py`
 - `crates/langextract-provider-*/` — one crate per LLM backend
