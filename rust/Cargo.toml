@@ -26,5 +26,10 @@ tokio = { version = "1", default-features = false, features = ["sync"] }
 # crate doesn't need to know which async runtime the consumer uses.
 futures-util = { version = "0.3", default-features = false, features = ["std", "async-await-macro"] }
 
+# Diff / LCS library used by the aligner. Rust equivalent of Python's
+# difflib.SequenceMatcher; exposes matching-block operations over generic
+# slices.
+similar = { version = "3", default-features = false }
+
 # Dev / test
 pretty_assertions = "1"

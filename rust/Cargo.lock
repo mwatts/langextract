@@ -160,6 +160,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "langextract-aligner"
+version = "0.1.0"
+dependencies = [
+ "langextract-core",
+ "langextract-tokenizer",
+ "pretty_assertions",
+ "similar",
+ "thiserror",
+]
+
+[[package]]
 name = "langextract-core"
 version = "0.1.0"
 dependencies = [
@@ -317,6 +328,12 @@ dependencies = [
  "serde_core",
  "zmij",
 ]
+
+[[package]]
+name = "similar"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26d0b06eba54f0ca0770f970a3e89823e766ca638dd940f8469fa0fa50c75396"
 
 [[package]]
 name = "slab"
