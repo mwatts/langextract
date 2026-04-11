@@ -1,8 +1,13 @@
 //! The [`ExtractRequest`] struct — everything needed to run a
 //! single end-to-end extraction against a language model.
 
-use langextract_aligner::DEFAULT_FUZZY_THRESHOLD;
+use std::sync::Arc;
+
+use langextract_aligner::{DEFAULT_FUZZY_THRESHOLD, FuzzySafeguards};
 use langextract_core::{ATTRIBUTE_SUFFIX, DocumentId, ExampleData, FormatType};
+
+use crate::cache::{ChunkCache, NoOpChunkCache};
+use crate::retry::RetryPolicy;
 
 /// Default chunk size in bytes.
 ///
@@ -113,6 +118,28 @@ pub struct ExtractRequest {
     /// Optional additional context to inject into every prompt
     /// (e.g. "This is a clinical note from a radiology report.").
     pub additional_context: Option<String>,
+
+    /// Number of chunks from this document to process concurrently.
+    /// The pipeline uses `futures::stream::buffer_unordered(N)` to
+    /// drive up to `N` per-chunk tasks in parallel. Default `1`
+    /// (serial). Raise to match your provider's concurrency budget
+    /// — 1-2 for a heavy CLI agent, 10-50 for a hosted API.
+    pub chunk_concurrency: usize,
+
+    /// Retry policy for per-chunk LLM calls. Transient errors
+    /// (rate limits, timeouts, malformed responses) trigger a
+    /// retry; fatal errors propagate immediately.
+    pub retry_policy: RetryPolicy,
+
+    /// Chunk-level response cache. Default: [`NoOpChunkCache`].
+    /// Supply an [`InMemoryChunkCache`](crate::cache::InMemoryChunkCache)
+    /// to share a cache across runs in a batch, or implement the
+    /// [`ChunkCache`] trait for persistent / distributed backends.
+    pub chunk_cache: Arc<dyn ChunkCache>,
+
+    /// Safeguards applied to the fuzzy alignment phase. See
+    /// [`FuzzySafeguards`].
+    pub fuzzy_safeguards: FuzzySafeguards,
 }
 
 impl ExtractRequest {
@@ -147,6 +174,10 @@ impl Default for ExtractRequest {
             context_window_chars: None,
             document_id: None,
             additional_context: None,
+            chunk_concurrency: 1,
+            retry_policy: RetryPolicy::default(),
+            chunk_cache: Arc::new(NoOpChunkCache),
+            fuzzy_safeguards: FuzzySafeguards::default(),
         }
     }
 }

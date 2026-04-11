@@ -31,5 +31,24 @@ futures-util = { version = "0.3", default-features = false, features = ["std", "
 # slices.
 similar = { version = "3", default-features = false }
 
+# Structured logging / tracing for the facade pipeline. Using the
+# `tracing` crate means consumers can wire in their own subscriber
+# (tracing-subscriber, tracing-opentelemetry, etc.) without the
+# library caring.
+tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
+
+# Content-addressed cache keys for the chunk cache. We hash
+# (description + chunk_text) to a stable content identifier.
+sha2 = "0.10"
+
+# Async primitives beyond the runtime-agnostic ones we already use.
+# Imported via a workspace entry so every crate can reference the
+# same futures version.
+futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
+
+# JSON Lines serialisation format for the checkpoint's default
+# on-disk backend.
+serde_json = "1"
+
 # Dev / test
 pretty_assertions = "1"

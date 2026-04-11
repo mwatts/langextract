@@ -22,7 +22,8 @@ pub enum ExtractError {
     #[error(transparent)]
     Chunking(#[from] ChunkingError),
 
-    /// Failure while calling the language model.
+    /// Failure while calling the language model, after any configured
+    /// retries have been exhausted.
     #[error(transparent)]
     Inference(#[from] InferError),
 
@@ -33,4 +34,14 @@ pub enum ExtractError {
     /// Failure while aligning extractions to the source.
     #[error(transparent)]
     Alignment(#[from] AlignError),
+
+    /// Failure at the checkpoint-store backend (file IO, database
+    /// driver, etc.). Carries a human-readable description.
+    #[error("checkpoint error: {0}")]
+    Checkpoint(String),
+
+    /// A task spawned onto the tokio runtime panicked or was
+    /// cancelled.
+    #[error("pipeline task failure: {0}")]
+    Task(String),
 }

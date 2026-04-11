@@ -65,13 +65,28 @@
 
 #![forbid(unsafe_code)]
 
+pub mod batch;
+pub mod cache;
+pub mod checkpoint;
 pub mod error;
 pub mod pipeline;
+pub mod report;
 pub mod request;
+pub mod retry;
 
+pub use crate::batch::{BatchItem, BatchOptions, extract_batch};
+pub use crate::cache::{CacheKey, ChunkCache, InMemoryChunkCache, NoOpChunkCache};
+pub use crate::checkpoint::{
+    Checkpoint, CheckpointId, InMemoryCheckpoint, JsonlCheckpoint, NoOpCheckpoint,
+};
 pub use crate::error::ExtractError;
-pub use crate::pipeline::extract;
+pub use crate::pipeline::{extract, extract_with_report};
+pub use crate::report::{
+    AlignmentCounts, ChunkReport, DocumentHealthThresholds, DocumentReport, HealthStatus,
+    unaligned_reason_label,
+};
 pub use crate::request::{DEFAULT_INDEX_SUFFIX, DEFAULT_MAX_CHAR_BUFFER, ExtractRequest};
+pub use crate::retry::{RetryPolicy, is_transient_format, is_transient_infer};
 
 // ---- curated re-exports from the focused crates ----
 //
@@ -100,5 +115,7 @@ pub use langextract_prompting::{
     ContextAwarePromptBuilder,
 };
 pub use langextract_chunking::{ChunkIterator, TextChunk};
-pub use langextract_aligner::{AlignmentOptions, DEFAULT_FUZZY_THRESHOLD};
+pub use langextract_aligner::{
+    AlignmentOptions, AlignmentReport, DEFAULT_FUZZY_THRESHOLD, FuzzySafeguards, UnalignedReason,
+};
 pub use langextract_tokenizer::{RegexTokenizer, Token, TokenType, TokenizedText, Tokenizer};
