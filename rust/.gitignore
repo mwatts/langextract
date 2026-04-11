@@ -1,0 +1,8 @@
+# The parent .gitignore excludes CLAUDE.md globally. The Rust port
+# tracks its own CLAUDE.md so that future sessions (human or agent)
+# working in this subtree see the porting principles and workspace
+# layout. Unignore it here:
+!CLAUDE.md
+
+# Standard Rust build artifacts.
+/target/

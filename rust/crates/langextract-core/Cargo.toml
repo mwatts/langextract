@@ -1,0 +1,41 @@
+[package]
+name = "langextract-core"
+description = "Core data types, error types, LanguageModel trait, and CLI-provider adapter for the Rust port of langextract."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["cli-adapter"]
+
+# Pulls in the CLI-provider adapter module (see `cli_adapter`).
+# Adds a runtime-agnostic dependency on tokio's sync primitives for the
+# concurrency semaphore; pulls in no runtime or IO code.
+cli-adapter = ["dep:tokio", "dep:futures-util"]
+
+[dependencies]
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+serde_json = "1"
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+missing_debug_implementations = "warn"
+missing_docs = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# Library module docs are sufficient; don't demand rustdoc examples on every item.
+missing_errors_doc = "allow"
+module_name_repetitions = "allow"

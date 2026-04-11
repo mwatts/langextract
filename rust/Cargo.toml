@@ -1,0 +1,30 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/*",
+]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "Apache-2.0"
+repository = "https://github.com/mwatts/langextract"
+rust-version = "1.85"
+
+[workspace.dependencies]
+# Core library deps
+thiserror = "2"
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+uuid = { version = "1", features = ["v4"] }
+
+# Async runtime primitives — runtime-agnostic primitives from tokio,
+# usable from any async runtime (async-std, smol, tokio).
+tokio = { version = "1", default-features = false, features = ["sync"] }
+
+# Runtime-agnostic future combinators (join_all etc.) so that the core
+# crate doesn't need to know which async runtime the consumer uses.
+futures-util = { version = "0.3", default-features = false, features = ["std", "async-await-macro"] }
+
+# Dev / test
+pretty_assertions = "1"
