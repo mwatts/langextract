@@ -65,14 +65,17 @@
 #![forbid(unsafe_code)]
 
 pub mod align;
+pub mod diagnostics;
 pub mod error;
 pub mod fuzzy;
 pub mod normalize;
 
 pub use crate::align::{
-    DEFAULT_DELIMITER, DEFAULT_FUZZY_THRESHOLD, AlignmentOptions, align_extraction_groups,
-    align_extraction_groups_with,
+    DEFAULT_DELIMITER, DEFAULT_FUZZY_THRESHOLD, AlignmentOptions, FuzzySafeguards,
+    align_extraction_groups, align_extraction_groups_with,
+    align_extraction_groups_with_diagnostics, align_extraction_groups_with_diagnostics_and,
 };
+pub use crate::diagnostics::{AlignmentReport, UnalignedReason};
 pub use crate::error::AlignError;
 pub use crate::normalize::{
     default_lowercase_tokens, lowercase_tokens, lowercase_tokens_from, normalize_token,

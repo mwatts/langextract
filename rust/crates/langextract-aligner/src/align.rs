@@ -35,8 +35,9 @@ use langextract_tokenizer::{RegexTokenizer, Token, Tokenizer};
 use similar::DiffOp;
 use similar::algorithms::{Algorithm, Capture, diff_slices};
 
+use crate::diagnostics::{AlignmentReport, UnalignedReason};
 use crate::error::AlignError;
-use crate::fuzzy::fuzzy_align;
+use crate::fuzzy::{FuzzyOutcome, fuzzy_align};
 use crate::normalize::lowercase_tokens_from;
 
 /// The default minimum ratio a fuzzy match must hit to be accepted.
@@ -49,6 +50,46 @@ pub const DEFAULT_FUZZY_THRESHOLD: f32 = 0.75;
 /// a single punctuation token under the default [`RegexTokenizer`] and
 /// is virtually never present in LLM output.
 pub const DEFAULT_DELIMITER: &str = "\u{241F}";
+
+/// Safeguards for the fuzzy alignment phase.
+///
+/// Fuzzy alignment is `O(extractions × windows × diff_cost)`, which is
+/// fine for normal LLM output (~10-20 careful extractions per chunk,
+/// most exact-matching) but can blow up on misbehaving or noisy model
+/// responses. Every field here is a pressure-release valve the
+/// pipeline can cap to keep a single bad response from taking down a
+/// whole batch.
+#[derive(Debug, Clone, Copy)]
+pub struct FuzzySafeguards {
+    /// Maximum number of extractions per chunk that may enter the
+    /// fuzzy phase. Anything beyond this gets marked
+    /// [`UnalignedReason::TooManyExtractions`] and skipped. A real
+    /// LLM rarely emits more than ~20 per chunk; setting this to
+    /// 100 catches pathological responses without rejecting
+    /// legitimate high-density output.
+    pub max_fuzzy_extractions_per_chunk: usize,
+
+    /// Maximum window size to try during the sliding-window scan,
+    /// as a multiplier of the extraction's own token length. A
+    /// value of 3.0 means "try windows up to 3× the extraction
+    /// length". The Python implementation tries every window up to
+    /// the full source length, which is quadratic in source size.
+    pub max_window_size_multiplier: f32,
+
+    /// Hard upper bound on window size, regardless of multiplier.
+    /// Prevents the multiplier from degenerating on long chunks.
+    pub max_window_size_absolute: usize,
+}
+
+impl Default for FuzzySafeguards {
+    fn default() -> Self {
+        Self {
+            max_fuzzy_extractions_per_chunk: 100,
+            max_window_size_multiplier: 3.0,
+            max_window_size_absolute: 64,
+        }
+    }
+}
 
 /// Options controlling alignment behaviour.
 #[derive(Debug, Clone)]
@@ -73,6 +114,10 @@ pub struct AlignmentOptions {
     /// Character offset to add to the start of each computed character
     /// interval (used when aligning a chunk of a larger document).
     pub char_offset: usize,
+
+    /// Safety limits on the fuzzy alignment phase. See
+    /// [`FuzzySafeguards`].
+    pub fuzzy_safeguards: FuzzySafeguards,
 }
 
 impl Default for AlignmentOptions {
@@ -83,11 +128,17 @@ impl Default for AlignmentOptions {
             accept_match_lesser: true,
             token_offset: 0,
             char_offset: 0,
+            fuzzy_safeguards: FuzzySafeguards::default(),
         }
     }
 }
 
 /// Align extractions with the default [`RegexTokenizer`].
+///
+/// Returns just the grounded groups; unaligned extractions are
+/// silently left with `char_interval == None`. See
+/// [`align_extraction_groups_with_diagnostics`] if you want the
+/// reasons.
 pub fn align_extraction_groups(
     groups: Vec<Vec<Extraction>>,
     source_text: &str,
@@ -96,19 +147,67 @@ pub fn align_extraction_groups(
     align_extraction_groups_with(groups, source_text, options, &RegexTokenizer::new())
 }
 
+/// Align extractions with diagnostics, using the default
+/// [`RegexTokenizer`]. Returns an [`AlignmentReport`] that pairs the
+/// grounded groups with a map of [`UnalignedReason`]s.
+pub fn align_extraction_groups_with_diagnostics(
+    groups: Vec<Vec<Extraction>>,
+    source_text: &str,
+    options: &AlignmentOptions,
+) -> Result<AlignmentReport, AlignError> {
+    align_extraction_groups_with_diagnostics_and(
+        groups,
+        source_text,
+        options,
+        &RegexTokenizer::new(),
+    )
+}
+
 /// Align extractions using a custom tokenizer.
 ///
 /// The tokenizer must be the same one used to build any token indices
 /// you pass back into the pipeline later, and should handle the
 /// delimiter ([`DEFAULT_DELIMITER`]) as a single token.
 pub fn align_extraction_groups_with<T: Tokenizer>(
-    mut groups: Vec<Vec<Extraction>>,
+    groups: Vec<Vec<Extraction>>,
     source_text: &str,
     options: &AlignmentOptions,
     tokenizer: &T,
 ) -> Result<Vec<Vec<Extraction>>, AlignError> {
+    let report = align_extraction_groups_with_diagnostics_and(
+        groups, source_text, options, tokenizer,
+    )?;
+    Ok(report.groups)
+}
+
+/// Per-extraction state tracked during the exact-match phase so the
+/// fuzzy phase can pick up where the exact phase left off and
+/// diagnostics can record the precise reason each failed.
+#[derive(Clone, Copy)]
+enum ExactState {
+    Aligned,
+    LesserRejected { matched: usize, total: usize },
+    NotFound,
+}
+
+/// Align extractions with diagnostics, using a custom tokenizer.
+#[expect(
+    clippy::too_many_lines,
+    reason = "verbatim composition of the exact + fuzzy phases with their \
+              diagnostics bookkeeping; splitting would obscure the \
+              per-extraction state machine"
+)]
+pub fn align_extraction_groups_with_diagnostics_and<T: Tokenizer>(
+    mut groups: Vec<Vec<Extraction>>,
+    source_text: &str,
+    options: &AlignmentOptions,
+    tokenizer: &T,
+) -> Result<AlignmentReport, AlignError> {
     if groups.is_empty() {
-        return Ok(groups);
+        return Ok(AlignmentReport {
+            groups,
+            unaligned_reasons: HashMap::new(),
+        });
     }
 
     // Tokenize source once. We need both the `TokenizedText` (for
@@ -152,7 +251,13 @@ pub fn align_extraction_groups_with<T: Tokenizer>(
     let ops = diff_token_slices(&source_tokens, &extraction_tokens);
 
     // Exact phase.
-    let mut aligned_flat_keys: Vec<(usize, usize)> = Vec::new();
+    let mut state_map: HashMap<(usize, usize), ExactState> = HashMap::new();
+    for (group_idx, group) in groups.iter().enumerate() {
+        for ext_idx in 0..group.len() {
+            state_map.insert((group_idx, ext_idx), ExactState::NotFound);
+        }
+    }
+
     for op in ops {
         let DiffOp::Equal {
             old_index,
@@ -163,17 +268,12 @@ pub fn align_extraction_groups_with<T: Tokenizer>(
             continue;
         };
         let Some(&(g, e)) = index_map.get(&new_index) else {
-            // This block doesn't start at the beginning of any
-            // extraction's token range — skip (matches Python's
-            // "no clean start index found" branch).
             continue;
         };
 
         let extraction = &mut groups[g][e];
         let ext_len = ext_lengths[&(g, e)];
 
-        // The block cannot exceed the extraction's own token count;
-        // the delimiter between extractions guarantees it.
         debug_assert!(
             len <= ext_len,
             "diff block length {len} exceeds extraction token count {ext_len}"
@@ -194,42 +294,128 @@ pub fn align_extraction_groups_with<T: Tokenizer>(
             extraction.token_interval = Some(token_interval);
             extraction.char_interval = Some(char_interval);
             extraction.alignment_status = Some(AlignmentStatus::MatchExact);
-            aligned_flat_keys.push((g, e));
+            state_map.insert((g, e), ExactState::Aligned);
         } else if options.accept_match_lesser {
             extraction.token_interval = Some(token_interval);
             extraction.char_interval = Some(char_interval);
             extraction.alignment_status = Some(AlignmentStatus::MatchLesser);
-            aligned_flat_keys.push((g, e));
+            state_map.insert((g, e), ExactState::Aligned);
+        } else {
+            state_map.insert(
+                (g, e),
+                ExactState::LesserRejected {
+                    matched: len,
+                    total: ext_len,
+                },
+            );
         }
-        // Else: leave unaligned, fall through to fuzzy phase.
     }
 
-    // Fuzzy phase.
-    if options.enable_fuzzy_alignment {
-        for (g_idx, group) in groups.iter_mut().enumerate() {
-            for (e_idx, extraction) in group.iter_mut().enumerate() {
-                if aligned_flat_keys.contains(&(g_idx, e_idx)) {
-                    continue;
-                }
-                if let Some(aligned) = fuzzy_align(
-                    extraction,
-                    &source_tokens,
-                    &source_tokenized.tokens,
-                    options.fuzzy_alignment_threshold,
-                    options.token_offset,
-                    options.char_offset,
-                    tokenizer,
-                ) {
-                    let (token_interval, char_interval) = aligned;
-                    extraction.token_interval = Some(token_interval);
-                    extraction.char_interval = Some(char_interval);
-                    extraction.alignment_status = Some(AlignmentStatus::MatchFuzzy);
-                }
+    // Collect per-extraction state into `unaligned_reasons`. Start
+    // by recording the exact-phase reason; fuzzy phase may
+    // overwrite with a better reason (or promote to aligned).
+    let mut unaligned_reasons: HashMap<(usize, usize), UnalignedReason> = HashMap::new();
+    let mut fuzzy_candidates: Vec<(usize, usize)> = Vec::new();
+    for ((g, e), state) in &state_map {
+        match state {
+            ExactState::Aligned => { /* grounded, nothing to record */ }
+            ExactState::NotFound => {
+                unaligned_reasons.insert((*g, *e), UnalignedReason::NoExactMatch);
+                fuzzy_candidates.push((*g, *e));
+            }
+            ExactState::LesserRejected { matched, total } => {
+                unaligned_reasons.insert(
+                    (*g, *e),
+                    UnalignedReason::LesserMatchRejected {
+                        matched_len: *matched,
+                        extraction_len: *total,
+                    },
+                );
+                fuzzy_candidates.push((*g, *e));
             }
         }
     }
 
-    Ok(groups)
+    // Fuzzy phase.
+    if options.enable_fuzzy_alignment {
+        // Safeguard: cap the number of extractions entering fuzzy.
+        let safeguards = options.fuzzy_safeguards;
+        let cap = safeguards.max_fuzzy_extractions_per_chunk;
+        let (to_run, to_skip) = if fuzzy_candidates.len() > cap {
+            let split = cap;
+            (&fuzzy_candidates[..split], &fuzzy_candidates[split..])
+        } else {
+            (&fuzzy_candidates[..], &[][..])
+        };
+        for (g, e) in to_skip {
+            unaligned_reasons.insert(
+                (*g, *e),
+                UnalignedReason::SkippedBySafeguard {
+                    reason: "max_fuzzy_extractions_per_chunk exceeded",
+                },
+            );
+        }
+
+        for (g, e) in to_run {
+            let extraction = &mut groups[*g][*e];
+            let outcome = fuzzy_align(
+                extraction,
+                &source_tokens,
+                &source_tokenized.tokens,
+                options.fuzzy_alignment_threshold,
+                options.token_offset,
+                options.char_offset,
+                &safeguards,
+                tokenizer,
+            );
+            match outcome {
+                FuzzyOutcome::Aligned {
+                    token_interval,
+                    char_interval,
+                    ratio: _,
+                } => {
+                    extraction.token_interval = Some(token_interval);
+                    extraction.char_interval = Some(char_interval);
+                    extraction.alignment_status = Some(AlignmentStatus::MatchFuzzy);
+                    unaligned_reasons.remove(&(*g, *e));
+                }
+                FuzzyOutcome::EmptyExtraction => {
+                    unaligned_reasons
+                        .insert((*g, *e), UnalignedReason::EmptyExtractionTokens);
+                }
+                FuzzyOutcome::SourceShorterThanExtraction => {
+                    // Leave whatever reason we set in the exact
+                    // phase — NoExactMatch or LesserMatchRejected.
+                }
+                FuzzyOutcome::BelowThreshold { best_ratio } => {
+                    unaligned_reasons.insert(
+                        (*g, *e),
+                        UnalignedReason::BelowFuzzyThreshold {
+                            best_ratio,
+                            threshold: options.fuzzy_alignment_threshold,
+                        },
+                    );
+                }
+            }
+        }
+    } else {
+        // Fuzzy disabled: replace NoExactMatch reasons with
+        // FuzzyDisabled for clarity. LesserMatchRejected stays
+        // as-is because it's more specific.
+        for (g, e) in &fuzzy_candidates {
+            if matches!(
+                unaligned_reasons.get(&(*g, *e)),
+                Some(UnalignedReason::NoExactMatch)
+            ) {
+                unaligned_reasons.insert((*g, *e), UnalignedReason::FuzzyDisabled);
+            }
+        }
+    }
+
+    Ok(AlignmentReport {
+        groups,
+        unaligned_reasons,
+    })
 }
 
 // ---------- helpers ----------

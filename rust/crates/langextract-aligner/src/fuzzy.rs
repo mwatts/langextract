@@ -29,12 +29,49 @@ use langextract_core::{CharInterval, Extraction, TokenInterval};
 use langextract_tokenizer::{Token, Tokenizer};
 use similar::DiffOp;
 
-use crate::align::{char_interval_for_span, diff_token_slices};
+use crate::align::{FuzzySafeguards, char_interval_for_span, diff_token_slices};
 use crate::normalize::{lowercase_tokens_from, normalize_tokens};
 
+/// Outcome of a single [`fuzzy_align`] call. The pipeline uses the
+/// extra detail to populate [`UnalignedReason`](crate::UnalignedReason)
+/// when a fuzzy attempt fails.
+#[derive(Debug, Clone)]
+#[expect(
+    dead_code,
+    reason = "ratio is retained for future telemetry / span fields"
+)]
+pub(crate) enum FuzzyOutcome {
+    /// A window met the threshold.
+    Aligned {
+        /// Token interval of the winning window, with `token_offset` applied.
+        token_interval: TokenInterval,
+        /// Char interval of the winning window, with `char_offset` applied.
+        char_interval: CharInterval,
+        /// Ratio achieved (for logging / telemetry).
+        ratio: f32,
+    },
+    /// The extraction's own tokenization was empty.
+    EmptyExtraction,
+    /// The source had fewer tokens than the extraction, so no
+    /// window of the required minimum size could exist.
+    SourceShorterThanExtraction,
+    /// Candidate windows were scanned but none hit the threshold.
+    BelowThreshold {
+        /// Best ratio observed across the scan.
+        best_ratio: f32,
+    },
+}
+
 /// Try to align a single extraction to the source via sliding-window
-/// fuzzy matching. Returns the aligned `(TokenInterval, CharInterval)`
-/// pair if a window meets the threshold, or `None` if not.
+/// fuzzy matching. Returns a [`FuzzyOutcome`] describing what
+/// happened — either success, a structural skip reason, or the best
+/// ratio observed across all candidate windows.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "per-extraction fuzzy is called from a hot loop in the exact/fuzzy \
+              composition; bundling the tokenizer and safeguards into a struct would \
+              force per-call allocation or a second layer of borrows"
+)]
 pub(crate) fn fuzzy_align<T: Tokenizer>(
     extraction: &Extraction,
     source_tokens_lower: &[String],
@@ -42,12 +79,13 @@ pub(crate) fn fuzzy_align<T: Tokenizer>(
     threshold: f32,
     token_offset: usize,
     char_offset: usize,
+    safeguards: &FuzzySafeguards,
     tokenizer: &T,
-) -> Option<(TokenInterval, CharInterval)> {
+) -> FuzzyOutcome {
     let extraction_lower =
         lowercase_tokens_from(&tokenizer.tokenize(&extraction.extraction_text));
     if extraction_lower.is_empty() {
-        return None;
+        return FuzzyOutcome::EmptyExtraction;
     }
     let extraction_norm = normalize_tokens(&extraction_lower);
     let len_e = extraction_norm.len();
@@ -69,10 +107,26 @@ pub(crate) fn fuzzy_align<T: Tokenizer>(
     let mut best_ratio: f32 = 0.0;
     let mut best_span: Option<(usize, usize)> = None; // (start, window_size)
 
-    let max_window = source_tokens_lower.len();
-    if max_window < len_e {
-        return None;
+    if source_tokens_lower.len() < len_e {
+        return FuzzyOutcome::SourceShorterThanExtraction;
     }
+
+    // Safeguard: cap the maximum window size. The Python
+    // implementation tries every window up to the full source
+    // length, which is quadratic in source size — fine for ~20-token
+    // extractions but catastrophic for long ones. We cap at
+    // `min(len_e * multiplier, absolute_cap, source_len)`.
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "token counts are bounded well below f32 mantissa precision"
+    )]
+    let multiplier_bound = (len_e as f32 * safeguards.max_window_size_multiplier) as usize;
+    let max_window = safeguards
+        .max_window_size_absolute
+        .min(multiplier_bound.max(len_e))
+        .min(source_tokens_lower.len());
 
     for window_size in len_e..=max_window {
         // Initial window counts.
@@ -119,9 +173,11 @@ pub(crate) fn fuzzy_align<T: Tokenizer>(
         }
     }
 
-    let (start_idx, window_size) = best_span?;
+    let Some((start_idx, window_size)) = best_span else {
+        return FuzzyOutcome::BelowThreshold { best_ratio: 0.0 };
+    };
     if best_ratio < threshold {
-        return None;
+        return FuzzyOutcome::BelowThreshold { best_ratio };
     }
 
     let token_interval = TokenInterval::new(
@@ -130,7 +186,11 @@ pub(crate) fn fuzzy_align<T: Tokenizer>(
     );
     let char_interval =
         char_interval_for_span(source_tokens_raw, start_idx, window_size, char_offset);
-    Some((token_interval, char_interval))
+    FuzzyOutcome::Aligned {
+        token_interval,
+        char_interval,
+        ratio: best_ratio,
+    }
 }
 
 // ---------- multiset helpers ----------
