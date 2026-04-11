@@ -36,6 +36,10 @@ Always load the `rust` skill at the start of each session when working in this p
   `PromptBuilder` trait with stateless and context-aware
   implementations (cross-chunk context tracking per document).
   Port of `langextract/prompting.py`.
+- `crates/langextract/` — **the top-level facade**. Single
+  `extract(model, request)` async function that composes every
+  layer above, plus curated re-exports of the public surface from
+  the focused crates so consumers only need one `use` path.
 
 Future crates (not yet ported):
 - `crates/langextract-chunking/` — document chunking (`chunking.py`)

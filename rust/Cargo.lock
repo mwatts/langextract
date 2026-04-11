@@ -176,6 +176,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "langextract"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "langextract-aligner",
+ "langextract-chunking",
+ "langextract-core",
+ "langextract-format",
+ "langextract-prompting",
+ "langextract-tokenizer",
+ "pretty_assertions",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "langextract-aligner"
 version = "0.1.0"
 dependencies = [
