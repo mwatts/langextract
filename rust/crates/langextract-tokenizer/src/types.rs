@@ -11,6 +11,10 @@
 //! safe, O(1) slice.
 
 use langextract_core::CharInterval;
+// Re-exported at the crate root below; `TokenInterval` is owned by
+// `langextract-core` to avoid a core → tokenizer dependency cycle, since
+// `Extraction` (in core) carries a `token_interval`.
+pub use langextract_core::TokenInterval;
 use serde::{Deserialize, Serialize};
 
 /// Classification of a token produced by a [`Tokenizer`](crate::Tokenizer).
@@ -46,41 +50,6 @@ pub struct Token {
     /// `\r` character. Used by [`find_sentence_range`](crate::find_sentence_range)
     /// to detect paragraph-style sentence breaks.
     pub first_token_after_newline: bool,
-}
-
-/// A half-open interval `[start_index, end_index)` over a token sequence.
-///
-/// Port of `TokenInterval`. Used by the resolver to describe which tokens
-/// in a [`TokenizedText`] are covered by an extraction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-pub struct TokenInterval {
-    /// Index of the first token in the interval.
-    pub start_index: usize,
-    /// Index one past the last token in the interval.
-    pub end_index: usize,
-}
-
-impl TokenInterval {
-    /// Construct a new interval.
-    #[must_use]
-    pub const fn new(start_index: usize, end_index: usize) -> Self {
-        Self {
-            start_index,
-            end_index,
-        }
-    }
-
-    /// Number of tokens in the interval.
-    #[must_use]
-    pub const fn len(self) -> usize {
-        self.end_index - self.start_index
-    }
-
-    /// Whether the interval is empty.
-    #[must_use]
-    pub const fn is_empty(self) -> bool {
-        self.start_index == self.end_index
-    }
 }
 
 /// The output of a [`Tokenizer`](crate::Tokenizer) run: the original text

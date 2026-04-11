@@ -49,7 +49,7 @@ pub mod cli_adapter;
 // module paths everywhere. Explicit, not glob (`M-NO-GLOB-REEXPORTS`).
 pub use crate::data::{
     AlignmentStatus, AnnotatedDocument, AttributeMap, AttributeValue, CharInterval, Document,
-    DocumentId, ExampleData, Extraction,
+    DocumentId, ExampleData, Extraction, TokenInterval,
 };
 pub use crate::error::{BoxError, CliRunnerError, InferError, LangExtractError, Result};
 pub use crate::format::FormatType;

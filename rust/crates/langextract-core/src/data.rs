@@ -54,6 +54,42 @@ impl CharInterval {
     }
 }
 
+/// A half-open interval `[start_index, end_index)` over a token sequence.
+///
+/// Lives in `langextract-core` (not the tokenizer crate) because
+/// [`Extraction`] carries one, and keeping it here avoids a core →
+/// tokenizer dependency cycle. The tokenizer crate re-exports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub struct TokenInterval {
+    /// Index of the first token in the interval.
+    pub start_index: usize,
+    /// Index one past the last token in the interval.
+    pub end_index: usize,
+}
+
+impl TokenInterval {
+    /// Construct a new interval.
+    #[must_use]
+    pub const fn new(start_index: usize, end_index: usize) -> Self {
+        Self {
+            start_index,
+            end_index,
+        }
+    }
+
+    /// Number of tokens covered.
+    #[must_use]
+    pub const fn len(self) -> usize {
+        self.end_index - self.start_index
+    }
+
+    /// Whether the interval covers no tokens.
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.start_index == self.end_index
+    }
+}
+
 /// How well an extraction's text aligned against the source document.
 ///
 /// Port of `AlignmentStatus` in `core/data.py`. The resolver attaches this
@@ -124,6 +160,11 @@ pub struct Extraction {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub char_interval: Option<CharInterval>,
 
+    /// Token span in the source document that this extraction aligns to.
+    /// Populated by the aligner alongside [`char_interval`](Self::char_interval).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_interval: Option<TokenInterval>,
+
     /// How well the extraction aligned to the source.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alignment_status: Option<AlignmentStatus>,
@@ -154,6 +195,7 @@ impl Extraction {
             extraction_class: class.into(),
             extraction_text: text.into(),
             char_interval: None,
+            token_interval: None,
             alignment_status: None,
             extraction_index: None,
             group_index: None,
