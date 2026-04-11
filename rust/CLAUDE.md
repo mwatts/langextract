@@ -30,6 +30,12 @@ Always load the `rust` skill at the start of each session when working in this p
   algorithm: multi-sentence packing, single long sentence breaking
   at newlines, and oversized-token solo chunks. Port of
   `langextract/chunking.py`.
+- `crates/langextract-prompting/` — few-shot prompt construction:
+  `PromptTemplateStructured` template type with YAML/JSON file
+  loader, `QAPromptGenerator` with Q/A-style rendering, and
+  `PromptBuilder` trait with stateless and context-aware
+  implementations (cross-chunk context tracking per document).
+  Port of `langextract/prompting.py`.
 
 Future crates (not yet ported):
 - `crates/langextract-chunking/` — document chunking (`chunking.py`)
