@@ -12,10 +12,13 @@ Always load the `rust` skill at the start of each session when working in this p
 - `crates/langextract-core/` — pure data types, errors, `LanguageModel` trait, and
   the CLI-provider adapter. Zero dependencies on external LLM SDKs. This is the
   foundational crate every other crate in the workspace depends on.
+- `crates/langextract-tokenizer/` — word/number/punctuation tokenizer
+  (`RegexTokenizer`), token/sentence-range helpers, and the base data types
+  the resolver's fuzzy alignment will build on. Port of
+  `langextract/core/tokenizer.py`. Unicode grapheme tokenizer deferred.
 
 Future crates (not yet ported):
 
-- `crates/langextract-tokenizer/` — Unicode tokenizer (`core/tokenizer.py`)
 - `crates/langextract-resolver/` — fenced-output parsing + fuzzy alignment (`resolver.py`)
 - `crates/langextract-chunking/` — document chunking (`chunking.py`)
 - `crates/langextract-pipeline/` — the `extract()` entry point and `annotation.py`
